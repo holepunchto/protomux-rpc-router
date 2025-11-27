@@ -1,0 +1,35 @@
+{
+  "name": "protomux-rpc-router",
+  "version": "0.0.1",
+  "description": "Protomux RPC router with modular, stackable middleware",
+  "homepage": "https://github.com/holepunchto/protomux-rpc-router#readme",
+  "bugs": {
+    "url": "https://github.com/holepunchto/protomux-rpc-router/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/holepunchto/protomux-rpc-router.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Holepunch Inc",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "lint": "prettier --check .",
+    "format": "prettier --write .",
+    "test": "npm run lint && brittle test/*"
+  },
+  "devDependencies": {
+    "brittle": "^3.19.1",
+    "compact-encoding": "^2.18.0",
+    "hyperdht": "^6.27.0",
+    "prettier": "^3.6.2",
+    "prettier-config-holepunch": "^2.0.0",
+    "protomux-rpc-client": "^2.1.0"
+  },
+  "dependencies": {
+    "b4a": "^1.7.3",
+    "bucket-rate-limit": "^1.0.0",
+    "protomux-rpc": "^1.7.1"
+  }
+}
