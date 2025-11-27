@@ -118,7 +118,7 @@ const middleware = {
 - `onrequest(ctx, next) => Promise<any>`:
   - `ctx` includes:
     - `ctx.method`: string RPC method name.
-    - `ctx.req`: the raw request object from `protomux-rpc`.
+    - `ctx.value`: the raw request object from `protomux-rpc`.
     - `ctx.connection`: the underlying connection.
   - `next()`: calls the next middleware/handler and resolves to the handler’s response (or throws).
 - `destroy()`: optional async cleanup called when the router is destroyed. Destruction order is reverse of registration.

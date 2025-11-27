@@ -1,5 +1,6 @@
 const ProtomuxRPC = require('protomux-rpc')
 const encoding = require('./lib/encoding')
+const cenc = require('compact-encoding')
 
 /**
  * RPC context passed to middleware.
@@ -108,17 +109,18 @@ class ProtomuxRpcRouter {
    */
   async handleConnection(connection, publicKey = connection.publicKey) {
     const rpc = new ProtomuxRPC(connection, {
-      id: publicKey
+      id: publicKey,
+      valueEncoding: null
     })
     this._methodMaps.forEach((registration) => {
-      rpc.respond(registration.method, (req) => {
+      rpc.respond(registration.method, (value) => {
         const combinedMiddleware = composeMiddlewares(this._middleware, registration._middleware)
         const ctx = {
           method: registration.method,
-          req,
+          value,
           connection
         }
-        return combinedMiddleware.onrequest(ctx, () => registration._handler(ctx.req))
+        return combinedMiddleware.onrequest(ctx, () => registration._handler(ctx.value, ctx))
       })
     })
   }

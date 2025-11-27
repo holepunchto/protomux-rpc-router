@@ -5,6 +5,7 @@ const cenc = require('compact-encoding')
 const ProtomuxRpcClient = require('../../protomux-rpc-client')
 const logger = require('./logger')
 const encoding = require('../lib/encoding')
+const { rateLimitByIp, rateLimitByRemotePublicKey } = require('../lib/rate-limit')
 
 /**
  * @returns {ProtomuxRpcRouter}
@@ -15,34 +16,18 @@ function setUpRpcRouter() {
   // add a global middleware to log requests
   rpcRouter.use(logger())
 
-  // // add a global middleware to rate limit requests by IP
-  // rpcRouter.use(
-  //   rateLimitByIp({
-  //     capacity: 10,
-  //     tokensPerInterval: 10,
-  //     intervalMs: 100
-  //   })
-  // )
+  // add a global middleware to rate limit requests by IP
+  rpcRouter.use(rateLimitByIp(10, 100))
 
-  // // add a global middleware to rate limit requests by remote public key
-  // rpcRouter.use(
-  //   rateLimitByRemotePublicKey({
-  //     capacity: 10,
-  //     tokensPerInterval: 10,
-  //     intervalMs: 100
-  //   })
-  // )
+  // add a global middleware to rate limit requests by remote public key
+  rpcRouter.use(rateLimitByRemotePublicKey(10, 100))
 
   // add a method to echo the request
   rpcRouter.method(
     'echo',
-    // rateLimitByIp({
-    //   capacity: 5,
-    //   tokensPerInterval: 1,
-    //   intervalMs: 100
-    // }),
+    rateLimitByIp(5, 200),
     encoding({ requestEncoding: cenc.string, responseEncoding: cenc.string }),
-    async (req) => {
+    async ({ req }) => {
       await new Promise((resolve) => setTimeout(resolve, 1000))
       return req
     }
