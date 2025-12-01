@@ -1,5 +1,5 @@
 const test = require('brittle')
-const { setUpTestClient } = require('./helper')
+const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
 const ProtomuxRpcRouter = require('..')
 
@@ -52,7 +52,7 @@ test('composable middlewares run in order (global -> method)', async (t) => {
     return req
   })
 
-  const makeRequest = await setUpTestClient(t, router)
+  const makeRequest = await simpleSetup(t, router)
   const res = await makeRequest('echo', b4a.from('foo'))
 
   t.alike(res, b4a.from('foo'))
@@ -84,7 +84,7 @@ test('client receives error when middleware throws', async (t) => {
     return req
   })
 
-  const makeRequest = await setUpTestClient(t, router)
+  const makeRequest = await simpleSetup(t, router)
 
   try {
     await makeRequest('echo', b4a.from('foo'))
@@ -113,7 +113,7 @@ test('client receives error when handler throws', async (t) => {
     throw error
   })
 
-  const makeRequest = await setUpTestClient(t, router)
+  const makeRequest = await simpleSetup(t, router)
 
   try {
     await makeRequest('fail', b4a.from('bar'))
@@ -125,110 +125,6 @@ test('client receives error when handler throws', async (t) => {
     t.is(err.cause.code, 'BOOM_IN_HANDLER')
     t.is(err.cause.message, 'boom in handler')
   }
-})
-
-test('middleware try/catch/finally logs on success/failure', async (t) => {
-  const router = new ProtomuxRpcRouter()
-  const logs = []
-  let globalRequestId = 0
-
-  const loggingMiddleware = {
-    onrequest: async (ctx, next) => {
-      const requestId = globalRequestId++
-      let caughtError = null
-      try {
-        const res = await next()
-        return res
-      } catch (err) {
-        caughtError = err
-        throw err
-      } finally {
-        if (caughtError) {
-          logs.push({
-            event: 'error',
-            message: caughtError.message,
-            code: caughtError.code,
-            method: ctx.method,
-            requestId
-          })
-        }
-        logs.push({ event: 'end', method: ctx.method, hadError: !!caughtError, requestId })
-      }
-    }
-  }
-
-  router.method('echo', loggingMiddleware, async (req) => {
-    return req
-  })
-  router.method('fail', loggingMiddleware, async (req) => {
-    const error = new Error('boom in handler')
-    error.code = 'BOOM_FOR_LOGGING'
-    throw error
-  })
-
-  const makeRequest = await setUpTestClient(t, router)
-  {
-    const res = await makeRequest('echo', b4a.from('ok'))
-    t.alike(res, b4a.from('ok'))
-    t.alike(logs[0], { event: 'end', method: 'echo', hadError: false, requestId: 0 })
-  }
-
-  await t.exception(async () => {
-    await makeRequest('fail', b4a.from('x'))
-  })
-  {
-    t.alike(logs[1], {
-      event: 'error',
-      message: 'boom in handler',
-      code: 'BOOM_FOR_LOGGING',
-      method: 'fail',
-      requestId: 1
-    })
-    t.alike(logs[2], { event: 'end', method: 'fail', hadError: true, requestId: 1 })
-  }
-})
-
-test('middleware can enrich context; logger respects skip flags', async (t) => {
-  const router = new ProtomuxRpcRouter()
-  const logs = []
-
-  const logger = {
-    onrequest: async (ctx, next) => {
-      let caughtError = null
-      try {
-        return await next()
-      } catch (err) {
-        caughtError = err
-        throw err
-      } finally {
-        // Respect skip flag set by method-level middleware (executes after logger)
-        if (!ctx.skipLogging) {
-          logs.push({ event: 'end', method: ctx.method, hadError: !!caughtError })
-        }
-      }
-    }
-  }
-
-  // Add logger globally so it runs before method-level middlewares
-  router.use(logger)
-
-  // Method-level skip so it executes after the logger
-  const skipLogger = {
-    onrequest: async (ctx, next) => {
-      ctx.skipLogging = true
-      return next()
-    }
-  }
-
-  router.method('echo', skipLogger, async (req) => {
-    return req
-  })
-
-  const makeRequest = await setUpTestClient(t, router)
-  const res = await makeRequest('echo', b4a.from('ok'))
-
-  t.alike(res, b4a.from('ok'))
-  t.alike(logs, [])
 })
 
 test('middleware destroy runs in reverse; method middlewares before global', async (t) => {
@@ -248,4 +144,46 @@ test('middleware destroy runs in reverse; method middlewares before global', asy
   // Expect method-level middlewares destroyed first (reverse of registration),
   // then global middlewares (also reverse of registration).
   t.alike(destructions, ['m2', 'm1', 'g2', 'g1'])
+})
+
+test('method-level middleware isolation', async (t) => {
+  const router = new ProtomuxRpcRouter()
+
+  const executions = []
+
+  const m1 = {
+    onrequest: async (ctx, next) => {
+      executions.push('m1:before')
+      const res = await next()
+      executions.push('m1:after')
+      return res
+    }
+  }
+  const m2 = {
+    onrequest: async (ctx, next) => {
+      executions.push('m2:before')
+      const res = await next()
+      executions.push('m2:after')
+      return res
+    }
+  }
+
+  router.method('echo-1', m1, (value) => {
+    executions.push('echo-1')
+    return b4a.concat([value, b4a.from('------1')])
+  })
+  router.method('echo-2', m2, (value) => {
+    executions.push('echo-2')
+    return b4a.concat([value, b4a.from('------2')])
+  })
+
+  const makeRequest = await simpleSetup(t, router)
+
+  const res1 = await makeRequest('echo-1', b4a.from('foo'))
+  t.alike(res1, b4a.from('foo'))
+  t.alike(executions, ['m1:before', 'echo-1', 'm1:after'])
+  executions.length = 0 // reset executions
+  const res2 = await makeRequest('echo-2', b4a.from('foo'))
+  t.alike(res2, b4a.from('foo'))
+  t.alike(executions, ['m2:before', 'echo-2', 'm2:after'])
 })

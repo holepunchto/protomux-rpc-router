@@ -5,7 +5,10 @@ const cenc = require('compact-encoding')
 const ProtomuxRpcClient = require('../../protomux-rpc-client')
 const logger = require('./logger')
 const encoding = require('../lib/encoding')
-const { rateLimitByIp, rateLimitByRemotePublicKey } = require('../lib/rate-limit')
+const {
+  byIp: rateLimitByIp,
+  byPublicKey: rateLimitByRemotePublicKey
+} = require('../lib/rate-limit')
 
 /**
  * @returns {ProtomuxRpcRouter}
@@ -27,15 +30,19 @@ function setUpRpcRouter() {
     'echo',
     rateLimitByIp(5, 200),
     encoding({ requestEncoding: cenc.string, responseEncoding: cenc.string }),
-    async ({ req }) => {
+    async (value) => {
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      return req
+      return value
     }
   )
 
-  rpcRouter.method('error', async (message) => {
-    throw new Error(message)
-  })
+  rpcRouter.method(
+    'error',
+    encoding({ requestEncoding: cenc.string, responseEncoding: cenc.string }),
+    async (message) => {
+      throw new Error(message)
+    }
+  )
 
   return rpcRouter
 }

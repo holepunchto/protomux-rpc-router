@@ -29,7 +29,6 @@
   },
   "dependencies": {
     "b4a": "^1.7.3",
-    "bucket-rate-limit": "^1.0.0",
     "protomux-rpc": "^1.7.1"
   }
 }

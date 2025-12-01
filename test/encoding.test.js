@@ -1,10 +1,10 @@
 const test = require('brittle')
 const b4a = require('b4a')
-const { setUpTestClient } = require('./helper')
+const { simpleSetup: setUpTestClient } = require('./helper')
 const ProtomuxRpcRouter = require('..')
 const cenc = require('compact-encoding')
 
-test.solo('encoding middleware decodes request before handler (cenc.string)', async (t) => {
+test('encoding middleware decodes request before handler (cenc.string)', async (t) => {
   const router = new ProtomuxRpcRouter()
   t.teardown(async () => {
     await router.destroy()
@@ -19,11 +19,11 @@ test.solo('encoding middleware decodes request before handler (cenc.string)', as
     }
   )
 
-  const makeRequest = await setUpTestClient(t, router, {
+  const makeRequest = await setUpTestClient(t, router)
+  const res = await makeRequest('echo', 'foo', {
     requestEncoding: cenc.string,
     responseEncoding: cenc.buffer
   })
-  const res = await makeRequest('echo', 'foo')
   t.alike(res, b4a.from('foo'))
 })
 
@@ -33,13 +33,21 @@ test('encoding middleware encodes response after handler (cenc.string)', async (
     await router.destroy()
   })
 
-  router.method('hello', ProtomuxRpcRouter.encoding({ response: cenc.string }), async () => {
-    return 'ok'
-  })
+  router.method(
+    'echo',
+    ProtomuxRpcRouter.encoding({ request: cenc.buffer, response: cenc.string }),
+    async (req) => {
+      console.log('echo', req)
+      return b4a.toString(req)
+    }
+  )
 
   const makeRequest = await setUpTestClient(t, router)
-  const res = await makeRequest('hello', b4a.from('x'))
-  t.alike(res, cenc.encode(cenc.string, 'ok'))
+  const res = await makeRequest('echo', b4a.from('hello'), {
+    requestEncoding: cenc.buffer,
+    responseEncoding: cenc.string
+  })
+  t.alike(res, 'hello')
 })
 
 test('encoding middleware applies both request and response encoders (string)', async (t) => {
@@ -49,7 +57,7 @@ test('encoding middleware applies both request and response encoders (string)', 
   })
 
   router.method(
-    'roundtrip',
+    'echo',
     ProtomuxRpcRouter.encoding({
       request: cenc.string,
       response: cenc.string
@@ -60,10 +68,10 @@ test('encoding middleware applies both request and response encoders (string)', 
     }
   )
 
-  const makeRequest = await setUpTestClient(t, router, {
+  const makeRequest = await setUpTestClient(t, router)
+  const res = await makeRequest('echo', 'hello', {
     requestEncoding: cenc.string,
-    responseEncoding: cenc.buffer
+    responseEncoding: cenc.string
   })
-  const res = await makeRequest('roundtrip', 'v')
-  t.alike(res, cenc.encode(cenc.string, 'v'))
+  t.alike(res, 'hello')
 })

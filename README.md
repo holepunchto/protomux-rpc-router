@@ -34,6 +34,9 @@ Errors thrown by inner layers bubble back out through the same chain, allowing o
 See `example/index.js` for a runnable demo. The short version:
 
 ```js
+const ProtomuxRpcRouter = require('protomux-rpc-router')
+const { encoding, rateLimit } = ProtomuxRpcRouter
+
 async function main() {
   const testnet = await getTestnet()
   const { bootstrap } = testnet
@@ -42,17 +45,19 @@ async function main() {
   const dhtServer = dht.createServer()
 
   const router = new ProtomuxRpcRouter()
+
+  router
     // Global logger & error-handling
     .use(logger())
     // Global rate limit
-    .use(rateLimitbyIp({ capacity: 10, intervalMs: 100 }))
+    .use(rateLimit.byIp(10, 100))
 
   // Define a method + per-method middleware
   // add a method to echo the request
   router.method(
     'echo',
     // rate limit per method
-    rateLimitByIp({ capacity: 5, intervalMs: 100 }),
+    rateLimit.byIp(5, 100),
     // place encoding after rate limit for efficiency
     encoding({ request: cenc.string, response: cenc.string }),
     async (req) => {
@@ -130,12 +135,56 @@ const middleware = {
 Encoding middleware to transform request/response payloads using `compact-encoding`-style codecs:
 
 ```js
+const { encoding } = ProtomuxRpcRouter
+
 router.method(
   'echo',
-  ProtomuxRpcRouter.encoding({
-    request: cenc.string, // { encode(value) }
-    response: cenc.string // { encode(value) }
+  encoding({
+    request: cenc.string,
+    response: cenc.string
   }),
+  async (req) => req
+)
+```
+
+- `rateLimit`
+
+Token-bucket rate limiting per peer. Two variants:
+
+- `rateLimit.byIp(capacity, intervalMs)`: key by remote IP.
+- `rateLimit.byPublicKey(capacity, intervalMs)`: key by remote public key.
+
+- `capacity`: maximum burst size (bucket size).
+- `intervalMs`: refill interval for 1 token. Tokens refill over time up to `capacity`.
+
+If the bucket is empty, the middleware throws with error code `RATE_LIMIT_EXCEEDED`.
+Place this before `encoding` for efficiency.
+
+```js
+const { rateLimit } = ProtomuxRpcRouter
+
+router.method(
+  'echo',
+  rateLimit.byIp(50, 100), // burst 50, ~10 tokens/sec (100ms refill), by IP
+  async (req) => req
+)
+```
+
+- `concurrentLimit`
+
+Limit the number of in-flight requests per peer. Two variants:
+
+- `concurrentLimit.byIp(capacity)`: key by remote IP.
+- `concurrentLimit.byPublicKey(capacity)`: key by remote public key.
+
+If the number of active requests for the key reaches `capacity`, the middleware throws with error code `CONCURRENT_LIMIT_EXCEEDED`. The slot is released when the handler completes.
+
+```js
+const { concurrentLimit } = ProtomuxRpcRouter
+
+router.method(
+  'echo',
+  concurrentLimit.byIp(10), // allow maximum 10 concurrent requests per IP
   async (req) => req
 )
 ```
