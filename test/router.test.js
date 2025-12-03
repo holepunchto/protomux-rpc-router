@@ -1,16 +1,18 @@
 const test = require('brittle')
 const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
+const Middleware = require('../lib/middleware')
 const ProtomuxRpcRouter = require('..')
 
 test('composable middlewares run in order (global -> method)', async (t) => {
   const router = new ProtomuxRpcRouter()
   t.teardown(async () => {
-    await router.destroy()
+    await router.close()
   })
   const executions = []
 
   const g1 = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('g1:before')
       const res = await next()
@@ -20,6 +22,7 @@ test('composable middlewares run in order (global -> method)', async (t) => {
   }
 
   const g2 = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('g2:before')
       const res = await next()
@@ -29,6 +32,7 @@ test('composable middlewares run in order (global -> method)', async (t) => {
   }
 
   const m1 = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m1:before')
       const res = await next()
@@ -37,6 +41,7 @@ test('composable middlewares run in order (global -> method)', async (t) => {
     }
   }
   const m2 = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m2:before')
       const res = await next()
@@ -45,12 +50,15 @@ test('composable middlewares run in order (global -> method)', async (t) => {
     }
   }
 
-  router.use(g1, g2)
+  router.use(g1).use(g2)
 
-  router.method('echo', m1, m2, async (req) => {
-    executions.push('handler')
-    return req
-  })
+  router
+    .method('echo', async (req) => {
+      executions.push('handler')
+      return req
+    })
+    .use(m1)
+    .use(m2)
 
   const makeRequest = await simpleSetup(t, router)
   const res = await makeRequest('echo', b4a.from('foo'))
@@ -71,18 +79,24 @@ test('composable middlewares run in order (global -> method)', async (t) => {
 
 test('client receives error when middleware throws', async (t) => {
   const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
 
   const throwingMiddleware = {
-    onrequest: async (ctx, next) => {
+    ...Middleware.NOOP,
+    onrequest: async () => {
       const error = new Error('boom in middleware')
       error.code = 'BOOM_IN_MIDDLEWARE'
       throw error
     }
   }
 
-  router.method('echo', throwingMiddleware, async (req) => {
-    return req
-  })
+  router
+    .method('echo', () => {
+      t.fail('handler should not be called')
+    })
+    .use(throwingMiddleware)
 
   const makeRequest = await simpleSetup(t, router)
 
@@ -102,16 +116,19 @@ test('client receives error when handler throws', async (t) => {
   const router = new ProtomuxRpcRouter()
 
   const doNothingMiddleware = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       return next()
     }
   }
 
-  router.method('fail', doNothingMiddleware, async (req) => {
-    const error = new Error('boom in handler')
-    error.code = 'BOOM_IN_HANDLER'
-    throw error
-  })
+  router
+    .method('fail', async () => {
+      const error = new Error('boom in handler')
+      error.code = 'BOOM_IN_HANDLER'
+      throw error
+    })
+    .use(doNothingMiddleware)
 
   const makeRequest = await simpleSetup(t, router)
 
@@ -127,23 +144,131 @@ test('client receives error when handler throws', async (t) => {
   }
 })
 
-test('middleware destroy runs in reverse; method middlewares before global', async (t) => {
+test('middleware open/close runs in correct order', async (t) => {
   const router = new ProtomuxRpcRouter()
-  const destructions = []
+  const openings = []
+  const closings = []
 
-  const g1 = { destroy: async () => destructions.push('g1') }
-  const g2 = { destroy: async () => destructions.push('g2') }
-  const m1 = { destroy: async () => destructions.push('m1') }
-  const m2 = { destroy: async () => destructions.push('m2') }
+  const g1 = {
+    ...Middleware.NOOP,
+    open: async () => openings.push('g1'),
+    close: async () => closings.push('g1')
+  }
+  const g2 = {
+    ...Middleware.NOOP,
+    open: async () => openings.push('g2'),
+    close: async () => closings.push('g2')
+  }
+  const m1 = {
+    ...Middleware.NOOP,
+    open: async () => openings.push('m1'),
+    close: async () => closings.push('m1')
+  }
+  const m2 = {
+    ...Middleware.NOOP,
+    open: async () => openings.push('m2'),
+    close: async () => closings.push('m2')
+  }
 
-  router.use(g1, g2)
-  router.method('echo', m1, m2, async (req) => req)
+  router.use(g1).use(g2)
+  router
+    .method('echo', () => {})
+    .use(m1)
+    .use(m2)
 
-  await router.destroy()
+  await router.ready()
+
+  // Open should run in registration order:
+  // global middlewares first (g1 -> g2), then method-level (m1 -> m2)
+  t.alike(openings, ['g1', 'g2', 'm1', 'm2'])
+
+  await router.close()
 
   // Expect method-level middlewares destroyed first (reverse of registration),
   // then global middlewares (also reverse of registration).
-  t.alike(destructions, ['m2', 'm1', 'g2', 'g1'])
+  t.alike(closings, ['m2', 'm1', 'g2', 'g1'])
+})
+
+test('middleware open error stops open flow, then closes middleware which were already opened', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  const openings = []
+  const closings = []
+  const plannedError = new Error('boom in open')
+
+  const m1 = {
+    ...Middleware.NOOP,
+    open: async () => openings.push('m1'),
+    close: async () => closings.push('m1')
+  }
+  const m2 = {
+    ...Middleware.NOOP,
+    open: () => {
+      throw plannedError
+    },
+    close: async () => closings.push('m2')
+  }
+  const m3 = {
+    ...Middleware.NOOP,
+    open: async () => openings.push('m3'),
+    close: async () => closings.push('m3')
+  }
+
+  router.use(m1).use(m2).use(m3)
+
+  try {
+    await router.ready()
+    t.fail('ready should have thrown')
+  } catch (error) {
+    t.is(error, plannedError, 'should throw the planned error')
+  }
+
+  // Opens should have run up to the failing middleware only.
+  t.alike(openings, ['m1'], 'should open up to the failing middleware only')
+  t.alike(closings, ['m1'], 'should close the already opened middleware')
+})
+
+test('middleware close error does not block closing chain, and throws the first error', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  const closings = []
+  const plannedError1 = new Error('boom in close')
+  const plannedError2 = new Error('boom in close')
+
+  const m1 = {
+    ...Middleware.NOOP,
+    close: async () => {
+      closings.push('m1')
+    }
+  }
+  const m2 = {
+    ...Middleware.NOOP,
+    close: async () => {
+      closings.push('m2')
+      throw plannedError1
+    }
+  }
+  const m3 = { ...Middleware.NOOP, close: async () => closings.push('m3') }
+  const m4 = {
+    ...Middleware.NOOP,
+    close: async () => {
+      closings.push('m4')
+      throw plannedError2
+    }
+  }
+
+  router.use(m1).use(m2).use(m3).use(m4)
+
+  await router.ready()
+
+  try {
+    await router.close()
+    t.fail('close should have thrown')
+  } catch (err) {
+    // The first error encountered during closing should be rethrown
+    t.is(err, plannedError2)
+  }
+
+  // All close handlers should have been invoked despite errors, in reverse order.
+  t.alike(closings, ['m4', 'm3', 'm2', 'm1'])
 })
 
 test('method-level middleware isolation', async (t) => {
@@ -152,6 +277,7 @@ test('method-level middleware isolation', async (t) => {
   const executions = []
 
   const m1 = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m1:before')
       const res = await next()
@@ -160,6 +286,7 @@ test('method-level middleware isolation', async (t) => {
     }
   }
   const m2 = {
+    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m2:before')
       const res = await next()
@@ -168,22 +295,27 @@ test('method-level middleware isolation', async (t) => {
     }
   }
 
-  router.method('echo-1', m1, (value) => {
-    executions.push('echo-1')
-    return b4a.concat([value, b4a.from('------1')])
-  })
-  router.method('echo-2', m2, (value) => {
-    executions.push('echo-2')
-    return b4a.concat([value, b4a.from('------2')])
-  })
+  router
+    .method('echo-1', (value) => {
+      executions.push('echo-1')
+      return b4a.concat([value, b4a.from(':1')])
+    })
+    .use(m1)
+
+  router
+    .method('echo-2', (value) => {
+      executions.push('echo-2')
+      return b4a.concat([value, b4a.from(':2')])
+    })
+    .use(m2)
 
   const makeRequest = await simpleSetup(t, router)
 
   const res1 = await makeRequest('echo-1', b4a.from('foo'))
-  t.alike(res1, b4a.from('foo'))
+  t.alike(res1, b4a.from('foo:1'))
   t.alike(executions, ['m1:before', 'echo-1', 'm1:after'])
   executions.length = 0 // reset executions
   const res2 = await makeRequest('echo-2', b4a.from('foo'))
-  t.alike(res2, b4a.from('foo'))
+  t.alike(res2, b4a.from('foo:2'))
   t.alike(executions, ['m2:before', 'echo-2', 'm2:after'])
 })

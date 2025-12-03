@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "b4a": "^1.7.3",
-    "protomux-rpc": "^1.7.1"
+    "protomux-rpc": "^1.7.1",
+    "ready-resource": "^1.2.0"
   }
 }

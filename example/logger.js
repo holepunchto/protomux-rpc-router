@@ -1,7 +1,9 @@
 const b4a = require('b4a')
+const Middleware = require('../lib/middleware')
 
 module.exports = function logger() {
   return {
+    ...Middleware.NOOP,
     onrequest: async ({ method, connection }, next) => {
       let caughtError = null
       const startTime = Date.now()

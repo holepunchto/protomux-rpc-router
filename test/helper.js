@@ -32,6 +32,7 @@ exports.setUpServer = async (t, bootstrap, router) => {
 exports.simpleSetup = async (t, router) => {
   const { bootstrap } = await exports.setUpNetwork(t)
   const server = await exports.setUpServer(t, bootstrap, router)
+  await router.ready()
 
   const clientDht = new HyperDHT({ bootstrap })
   t.teardown(async () => {
@@ -44,7 +45,7 @@ exports.simpleSetup = async (t, router) => {
   return (
     method,
     params,
-    requestOpts = { requestEncoding: cenc.buffer, responseEncoding: cenc.buffer }
+    requestOpts = { requestEncoding: cenc.raw, responseEncoding: cenc.raw }
   ) => {
     return client.makeRequest(server.address().publicKey, method, params, requestOpts)
   }
@@ -57,13 +58,4 @@ exports.createKeyPair = (seed) => {
   if (seed) sodium.crypto_sign_seed_keypair(publicKey, secretKey, seed)
   else sodium.crypto_sign_keypair(publicKey, secretKey)
   return { publicKey, secretKey }
-}
-
-exports.testException = async (t, fn) => {
-  try {
-    await fn()
-    t.fail('expected exception')
-  } catch (error) {
-    return error
-  }
 }
