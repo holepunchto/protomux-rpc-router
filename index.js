@@ -49,16 +49,20 @@ class MethodRegistration {
     return this
   }
 
-  async open(ctx) {
-    await this._middleware.open(ctx)
+  /**
+   * Open hook for method, call into middleware chain
+   * @returns {Promise<void>}
+   */
+  async onopen(ctx) {
+    await this._middleware.onopen(ctx)
   }
 
   /**
-   * Run cleanup for this method's middleware.
+   * Close hook for method, call into middleware chain
    * @returns {Promise<void>}
    */
-  async close(ctx) {
-    await this._middleware.close(ctx)
+  async onclose(ctx) {
+    await this._middleware.onclose(ctx)
   }
 }
 
@@ -73,17 +77,17 @@ class ProtomuxRpcRouter extends ReadyResource {
    */
   constructor() {
     super()
-    this._methodMaps = new Map()
+    this.methods = new Map()
     this._middleware = Middleware.NOOP
   }
 
   /**
    * Attach responders for all registered methods on a new connection.
    * @param {any} connection - HyperDHT connection (duplex stream with `publicKey`).
-   * @param {Buffer|string} [publicKey=connection.publicKey] - Optional responder id; defaults to the peer public key.
+   * @param {Buffer|string} [protomuxRpcId=connection.publicKey] - Optional responder id; defaults to the peer public key.
    * @returns {Promise<void>}
    */
-  async handleConnection(connection, publicKey = connection.publicKey) {
+  async handleConnection(connection, protomuxRpcId = connection.publicKey) {
     if (!this.opened) {
       throw ProtomuxRpcRouterError.ROUTER_NOT_READY()
     }
@@ -91,10 +95,10 @@ class ProtomuxRpcRouter extends ReadyResource {
       throw ProtomuxRpcRouterError.ROUTER_CLOSED()
     }
     const rpc = new ProtomuxRPC(connection, {
-      id: publicKey,
+      id: protomuxRpcId,
       valueEncoding: null
     })
-    this._methodMaps.forEach((registration) => {
+    this.methods.forEach((registration) => {
       rpc.respond(registration.method, async (value) => {
         const combinedMiddleware = Middleware.compose(this._middleware, registration._middleware)
         const ctx = {
@@ -130,7 +134,7 @@ class ProtomuxRpcRouter extends ReadyResource {
    */
   method(method, handler) {
     const registration = new MethodRegistration(method, Middleware.NOOP, handler)
-    this._methodMaps.set(method, registration)
+    this.methods.set(method, registration)
     return registration
   }
 
@@ -139,10 +143,10 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {Promise<void>}
    */
   async _open() {
-    await this._middleware.open({ router: this })
+    await this._middleware.onopen({ router: this })
 
-    for (const registration of this._methodMaps.values()) {
-      await registration.open({ router: this, method: registration.method })
+    for (const registration of this.methods.values()) {
+      await registration.onopen({ router: this, method: registration.method })
     }
   }
 
@@ -151,11 +155,11 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {Promise<void>}
    */
   async _close() {
-    for (const registration of this._methodMaps.values()) {
-      await registration.close({ router: this, method: registration.method })
+    for (const registration of this.methods.values()) {
+      await registration.onclose({ router: this, method: registration.method })
     }
-    this._methodMaps.clear()
-    await this._middleware.close({ router: this })
+    this.methods.clear()
+    await this._middleware.onclose({ router: this })
   }
 }
 

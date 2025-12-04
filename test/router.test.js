@@ -151,23 +151,23 @@ test('middleware open/close runs in correct order', async (t) => {
 
   const g1 = {
     ...Middleware.NOOP,
-    open: async () => openings.push('g1'),
-    close: async () => closings.push('g1')
+    onopen: async () => openings.push('g1'),
+    onclose: async () => closings.push('g1')
   }
   const g2 = {
     ...Middleware.NOOP,
-    open: async () => openings.push('g2'),
-    close: async () => closings.push('g2')
+    onopen: async () => openings.push('g2'),
+    onclose: async () => closings.push('g2')
   }
   const m1 = {
     ...Middleware.NOOP,
-    open: async () => openings.push('m1'),
-    close: async () => closings.push('m1')
+    onopen: async () => openings.push('m1'),
+    onclose: async () => closings.push('m1')
   }
   const m2 = {
     ...Middleware.NOOP,
-    open: async () => openings.push('m2'),
-    close: async () => closings.push('m2')
+    onopen: async () => openings.push('m2'),
+    onclose: async () => closings.push('m2')
   }
 
   router.use(g1).use(g2)
@@ -197,20 +197,20 @@ test('middleware open error stops open flow, then closes middleware which were a
 
   const m1 = {
     ...Middleware.NOOP,
-    open: async () => openings.push('m1'),
-    close: async () => closings.push('m1')
+    onopen: async () => openings.push('m1'),
+    onclose: async () => closings.push('m1')
   }
   const m2 = {
     ...Middleware.NOOP,
-    open: () => {
+    onopen: () => {
       throw plannedError
     },
-    close: async () => closings.push('m2')
+    onclose: async () => closings.push('m2')
   }
   const m3 = {
     ...Middleware.NOOP,
-    open: async () => openings.push('m3'),
-    close: async () => closings.push('m3')
+    onopen: async () => openings.push('m3'),
+    onclose: async () => closings.push('m3')
   }
 
   router.use(m1).use(m2).use(m3)
@@ -235,21 +235,24 @@ test('middleware close error does not block closing chain, and throws the first 
 
   const m1 = {
     ...Middleware.NOOP,
-    close: async () => {
+    onclose: async () => {
       closings.push('m1')
     }
   }
   const m2 = {
     ...Middleware.NOOP,
-    close: async () => {
+    onclose: async () => {
       closings.push('m2')
       throw plannedError1
     }
   }
-  const m3 = { ...Middleware.NOOP, close: async () => closings.push('m3') }
+  const m3 = {
+    ...Middleware.NOOP,
+    onclose: async () => closings.push('m3')
+  }
   const m4 = {
     ...Middleware.NOOP,
-    close: async () => {
+    onclose: async () => {
       closings.push('m4')
       throw plannedError2
     }
