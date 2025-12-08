@@ -3,7 +3,6 @@ const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
 const promClient = require('prom-client')
 const safetyCatch = require('safety-catch')
-const Middleware = require('../lib/middleware')
 const ProtomuxRpcRouter = require('..')
 
 test('composable middlewares run in order (global -> method)', async (t) => {
@@ -216,11 +215,11 @@ test('middleware open error stops open flow, then closes middleware which were a
   t.alike(closings, ['m1'], 'should close the already opened middleware')
 })
 
-test('middleware close error does not block closing chain, and throws the first error', async (t) => {
+test('middleware close error does not block closing chain, and throws the aggregate error', async (t) => {
   const router = new ProtomuxRpcRouter()
   const closings = []
-  const plannedError1 = new Error('boom in close')
-  const plannedError2 = new Error('boom in close')
+  const plannedError1 = new Error('boom 1')
+  const plannedError2 = new Error('boom 2')
 
   const m1 = {
     onclose: async () => {
@@ -252,7 +251,10 @@ test('middleware close error does not block closing chain, and throws the first 
     t.fail('close should have thrown')
   } catch (err) {
     // The first error encountered during closing should be rethrown
-    t.is(err, plannedError2)
+    t.ok(err instanceof AggregateError)
+    t.is(err.errors.length, 2)
+    t.is(err.errors[0], plannedError2)
+    t.is(err.errors[1], plannedError1)
   }
 
   // All close handlers should have been invoked despite errors, in reverse order.

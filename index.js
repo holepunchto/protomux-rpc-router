@@ -172,27 +172,22 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {Promise<void>}
    */
   async _close() {
-    let caughtError = null
+    let aggregateError = null
     for (const registration of this.methods.values()) {
       try {
         await registration.onclose()
       } catch (error) {
-        if (caughtError === null) {
-          caughtError = error
-        }
+        aggregateError = ProtomuxRpcRouterError.aggregate(aggregateError, error)
       }
     }
     this.methods.clear()
     try {
       await this._middleware.onclose()
     } catch (error) {
-      if (caughtError === null) {
-        caughtError = error
-      }
+      aggregateError = ProtomuxRpcRouterError.aggregate(aggregateError, error)
     }
-
-    if (caughtError) {
-      throw caughtError
+    if (aggregateError) {
+      throw aggregateError
     }
   }
 
