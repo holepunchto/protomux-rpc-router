@@ -14,12 +14,17 @@
   "author": "Holepunch Inc",
   "type": "commonjs",
   "main": "index.js",
+  "files": [
+    "index.js",
+    "lib/"
+  ],
   "scripts": {
     "lint": "prettier --check .",
     "format": "prettier --write .",
     "test": "npm run lint && brittle test/*"
   },
   "devDependencies": {
+    "b4a": "^1.7.3",
     "brittle": "^3.19.1",
     "compact-encoding": "^2.18.0",
     "hyperdht": "^6.27.0",
@@ -29,8 +34,8 @@
     "protomux-rpc-client": "^2.1.0"
   },
   "dependencies": {
-    "b4a": "^1.7.3",
     "protomux-rpc": "^1.7.1",
-    "ready-resource": "^1.2.0"
+    "ready-resource": "^1.2.0",
+    "safety-catch": "^1.0.2"
   }
 }
