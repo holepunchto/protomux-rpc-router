@@ -31,7 +31,7 @@ Errors thrown in inner layers propagate up the same chain; the outer layer's cat
 
 ## Quick start
 
-See `example/index.js` for a runnable demo. 
+See `example/index.js` for a runnable demo.
 
 ## API
 
