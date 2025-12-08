@@ -9,7 +9,7 @@ This package wraps `protomux-rpc` responders with an onion-style middleware stac
 - Global middleware: applied to every RPC method.
 - Per-method middleware: applied only to a specific method.
 
-Middleware compose in a nested “onion” where control flows inward to your handler and then unwinds outward, so cross-cutting concerns (logging, rate limiting, timeouts, auth, validation, etc.) can be layered in a predictable order to improve resilience.
+Middleware composes²   in a nested “onion” where control flows inward to your handler and then unwinds outward, so cross-cutting concerns (logging, rate limiting, timeouts, auth, validation, etc.) can be layered in a predictable order to improve resilience.
 
 High level:
 
@@ -31,7 +31,7 @@ Errors thrown in inner layers propagate up the same chain; the outer layer's cat
 
 ## Quick start
 
-See `example/index.js` for a runnable demo.
+See [example/index.js](example/index.js) for a runnable demo.
 
 ## API
 
@@ -41,7 +41,7 @@ Create a new router.
 
 #### `router.use(middleware)`
 
-Attach global middleware. These will wrap every method in the order provided (onion-style). Returns the router for chaining (`router.use(middleware1).use(middleware2)`).
+Attach global middleware. This will wrap every method in the order provided (onion-style). Returns the router for chaining (`router.use(middleware1).use(middleware2)`).
 
 - `middleware`: object with `onrequest(ctx, next)`, and optional `onopen()`/`onclose()` hooks; applied to every method.
 
@@ -54,12 +54,12 @@ Register an RPC method. Returns a `MethodRegistration` which can be further conf
 
 Note: calls protomux-rpc's [respond](https://github.com/holepunchto/protomux-rpc?tab=readme-ov-file#rpcrespondmethod-options-handler) method under the hood.
 
-#### `router.handleConnection(connection, [protomuxRpcId])`
+#### `router.handleConnection(connection, protomuxRpcId=connection.publicKey)`
 
 Attach responders for all registered methods to an incoming HyperDHT `connection`.
 
 - `connection`: the incoming HyperDHT connection .
-- `protomuxRpcId` (optional): `Buffer` or string responder id; defaults to `connection.publicKey`.
+- `protomuxRpcId` (optional): `Buffer` responder id; defaults to `connection.publicKey`.
 
 #### `router.ready()`
 
@@ -73,7 +73,7 @@ Stop accepting new connections and call the `onclose` of all middlewares.
 
 Append additional per-method middleware to an already registered method. Returns the registration for chaining (`methodRegistration.use(middleware1).use(middleware2)`).
 
-- `middleware`: object with `onrequest(ctx, next)`, and optional `onopen()`/`onclose()`; appended to this method’s chain.
+- `middleware`: object with `onrequest(ctx, next)`, and optional `onopen()`/`onclose()`.
 
 ### Middleware interface
 
