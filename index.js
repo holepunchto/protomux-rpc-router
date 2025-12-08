@@ -97,7 +97,7 @@ class ProtomuxRpcRouter extends ReadyResource {
     if (!this.opened) {
       throw ProtomuxRpcRouterError.ROUTER_NOT_READY()
     }
-    if (this.closed) {
+    if (this.closing) {
       throw ProtomuxRpcRouterError.ROUTER_CLOSED()
     }
     const rpc = new ProtomuxRPC(connection, {
