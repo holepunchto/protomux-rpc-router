@@ -1,6 +1,5 @@
 const ProtomuxRPC = require('protomux-rpc')
 const ReadyResource = require('ready-resource')
-const safetyCatch = require('safety-catch')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
 
