@@ -27,7 +27,7 @@ request
 response
 ```
 
-Errors thrown by inner layers bubble back out through the same chain, allowing outer layers (e.g. logger) to observe and act.
+Errors thrown in inner layers propagate up the same chain; the outer layer's catch/finally will execute and can observe or handle them (e.g., a logger).
 
 ## Quick start
 
@@ -82,7 +82,7 @@ Create a new router.
 
 Attach global middleware. These will wrap every method in the order provided (onion-style). Returns the router for chaining.
 
-- `middleware`: object with `onrequest(ctx, next)`, and optional `onopen(ctx)`/`onclose(ctx)` hooks; applied to every method.
+- `middleware`: object with `onrequest(ctx, next)`, and optional `onopen()`/`onclose()` hooks; applied to every method.
 
 #### `router.method(name, handler)`
 
@@ -110,7 +110,7 @@ See `ready-resource`. Call into hook `onclose` of middleware chain.
 
 Append additional per-method middleware to an already registered method. Returns the registration for chaining.
 
-- `middleware`: object with `onrequest(ctx, next)`, and optional `onopen(ctx)`/`onclose(ctx)`; appended to this method’s chain.
+- `middleware`: object with `onrequest(ctx, next)`, and optional `onopen()`/`onclose()`; appended to this method’s chain.
 
 ### Middleware interface
 
@@ -125,9 +125,9 @@ const middleware = {
     // do work after
     return res
   },
-  // Hook invoked when the router begins opening
+  // [Optional] hook invoked when the router begins opening
   onopen: async () => {},
-  // Hook invoked when the router begins closing
+  // [Optional] hook invoked when the router begins closing
   onclose: async () => {}
 }
 ```

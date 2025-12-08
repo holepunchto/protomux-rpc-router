@@ -1,6 +1,8 @@
 const test = require('brittle')
 const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
+const promClient = require('prom-client')
+const safetyCatch = require('safety-catch')
 const Middleware = require('../lib/middleware')
 const ProtomuxRpcRouter = require('..')
 
@@ -12,7 +14,6 @@ test('composable middlewares run in order (global -> method)', async (t) => {
   const executions = []
 
   const g1 = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('g1:before')
       const res = await next()
@@ -22,7 +23,6 @@ test('composable middlewares run in order (global -> method)', async (t) => {
   }
 
   const g2 = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('g2:before')
       const res = await next()
@@ -32,7 +32,6 @@ test('composable middlewares run in order (global -> method)', async (t) => {
   }
 
   const m1 = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m1:before')
       const res = await next()
@@ -41,7 +40,6 @@ test('composable middlewares run in order (global -> method)', async (t) => {
     }
   }
   const m2 = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m2:before')
       const res = await next()
@@ -84,7 +82,6 @@ test('client receives error when middleware throws', async (t) => {
   })
 
   const throwingMiddleware = {
-    ...Middleware.NOOP,
     onrequest: async () => {
       const error = new Error('boom in middleware')
       error.code = 'BOOM_IN_MIDDLEWARE'
@@ -116,7 +113,6 @@ test('client receives error when handler throws', async (t) => {
   const router = new ProtomuxRpcRouter()
 
   const doNothingMiddleware = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       return next()
     }
@@ -150,22 +146,18 @@ test('middleware open/close runs in correct order', async (t) => {
   const closings = []
 
   const g1 = {
-    ...Middleware.NOOP,
     onopen: async () => openings.push('g1'),
     onclose: async () => closings.push('g1')
   }
   const g2 = {
-    ...Middleware.NOOP,
     onopen: async () => openings.push('g2'),
     onclose: async () => closings.push('g2')
   }
   const m1 = {
-    ...Middleware.NOOP,
     onopen: async () => openings.push('m1'),
     onclose: async () => closings.push('m1')
   }
   const m2 = {
-    ...Middleware.NOOP,
     onopen: async () => openings.push('m2'),
     onclose: async () => closings.push('m2')
   }
@@ -196,19 +188,16 @@ test('middleware open error stops open flow, then closes middleware which were a
   const plannedError = new Error('boom in open')
 
   const m1 = {
-    ...Middleware.NOOP,
     onopen: async () => openings.push('m1'),
     onclose: async () => closings.push('m1')
   }
   const m2 = {
-    ...Middleware.NOOP,
     onopen: () => {
       throw plannedError
     },
     onclose: async () => closings.push('m2')
   }
   const m3 = {
-    ...Middleware.NOOP,
     onopen: async () => openings.push('m3'),
     onclose: async () => closings.push('m3')
   }
@@ -234,24 +223,20 @@ test('middleware close error does not block closing chain, and throws the first 
   const plannedError2 = new Error('boom in close')
 
   const m1 = {
-    ...Middleware.NOOP,
     onclose: async () => {
       closings.push('m1')
     }
   }
   const m2 = {
-    ...Middleware.NOOP,
     onclose: async () => {
       closings.push('m2')
       throw plannedError1
     }
   }
   const m3 = {
-    ...Middleware.NOOP,
     onclose: async () => closings.push('m3')
   }
   const m4 = {
-    ...Middleware.NOOP,
     onclose: async () => {
       closings.push('m4')
       throw plannedError2
@@ -280,7 +265,6 @@ test('method-level middleware isolation', async (t) => {
   const executions = []
 
   const m1 = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m1:before')
       const res = await next()
@@ -289,7 +273,6 @@ test('method-level middleware isolation', async (t) => {
     }
   }
   const m2 = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       executions.push('m2:before')
       const res = await next()
@@ -321,4 +304,53 @@ test('method-level middleware isolation', async (t) => {
   const res2 = await makeRequest('echo-2', b4a.from('foo'))
   t.alike(res2, b4a.from('foo:2'))
   t.alike(executions, ['m2:before', 'echo-2', 'm2:after'])
+})
+
+test('stats counts total requests and errors with labels', async (t) => {
+  promClient.register.clear()
+
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  router.use({
+    onrequest: async (ctx, next) => {
+      if (b4a.toString(ctx.value) === 'boom-in-middleware') {
+        throw new Error('boom-in-middleware')
+      }
+      return next()
+    }
+  })
+
+  router.method('echo', (value) => {
+    if (b4a.toString(value) === 'boom-in-handler') {
+      throw new Error('boom-in-handler')
+    }
+    return value
+  })
+
+  router.registerMetrics(promClient)
+
+  const makeRequest = await simpleSetup(t, router)
+
+  // 4 successful, 2 failing
+  await makeRequest('echo', b4a.from('hello')).catch(safetyCatch)
+  await makeRequest('echo', b4a.from('hello again')).catch(safetyCatch)
+  await makeRequest('echo', b4a.from('boom-in-middleware')).catch(safetyCatch)
+  await makeRequest('echo', b4a.from('boom-in-handler')).catch(safetyCatch)
+
+  function getSumMetricValue(metrics, metricName) {
+    const metric = metrics.find((m) => m.name === metricName)
+    if (!metric) return 0
+    return metric.values.reduce((sum, v) => sum + v.value, 0)
+  }
+
+  const metrics = await promClient.register.getMetricsAsJSON()
+  const totalRequests = getSumMetricValue(metrics, 'protomux_rpc_router_nr_requests')
+  t.is(totalRequests, 4, 'total requests counter')
+  const totalErrors = getSumMetricValue(metrics, 'protomux_rpc_router_nr_errors')
+  t.is(totalErrors, 2, 'total errors counter')
+  const totalHandlerErrors = getSumMetricValue(metrics, 'protomux_rpc_router_nr_handler_errors')
+  t.is(totalHandlerErrors, 1, 'total handler errors counter')
 })

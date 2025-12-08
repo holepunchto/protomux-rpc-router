@@ -1,5 +1,6 @@
 const ProtomuxRPC = require('protomux-rpc')
 const ReadyResource = require('ready-resource')
+const safetyCatch = require('safety-catch')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
 
@@ -41,11 +42,11 @@ class MethodRegistration {
 
   /**
    * Attach additional middleware to this method (appended to existing chain).
-   * @param {Middleware} middleware
+   * @param {Partial<Middleware>} middleware - The middleware object to attach.
    * @returns {this}
    */
   use(middleware) {
-    this._middleware = Middleware.compose(this._middleware, middleware)
+    this._middleware = Middleware.compose(this._middleware, Middleware.wrap(middleware))
     return this
   }
 
@@ -53,16 +54,16 @@ class MethodRegistration {
    * Open hook for method, call into middleware chain
    * @returns {Promise<void>}
    */
-  async onopen(ctx) {
-    await this._middleware.onopen(ctx)
+  async onopen() {
+    await this._middleware.onopen()
   }
 
   /**
    * Close hook for method, call into middleware chain
    * @returns {Promise<void>}
    */
-  async onclose(ctx) {
-    await this._middleware.onclose(ctx)
+  async onclose() {
+    await this._middleware.onclose()
   }
 }
 
@@ -79,6 +80,11 @@ class ProtomuxRpcRouter extends ReadyResource {
     super()
     this.methods = new Map()
     this._middleware = Middleware.NOOP
+    this.stats = {
+      nrRequests: 0,
+      nrErrors: 0,
+      nrHandlerErrors: 0
+    }
   }
 
   /**
@@ -100,27 +106,38 @@ class ProtomuxRpcRouter extends ReadyResource {
     })
     this.methods.forEach((registration) => {
       rpc.respond(registration.method, async (value) => {
+        this.stats.nrRequests++
         const combinedMiddleware = Middleware.compose(this._middleware, registration._middleware)
         const ctx = {
           method: registration.method,
           value,
           connection
         }
-        const res = await combinedMiddleware.onrequest(ctx, () => {
-          return registration._handler(ctx.value, ctx)
-        })
-        return res
+        try {
+          const res = await combinedMiddleware.onrequest(ctx, async () => {
+            try {
+              return await registration._handler(ctx.value, ctx)
+            } catch (error) {
+              this.stats.nrHandlerErrors++
+              throw error
+            }
+          })
+          return res
+        } catch (error) {
+          this.stats.nrErrors++
+          throw error
+        }
       })
     })
   }
 
   /**
    * Add global middleware applied to every method.
-   * @param {Middleware} middleware
+   * @param {Partial<Middleware>} middleware - The middleware object to attach.
    * @returns {this}
    */
   use(middleware) {
-    this._middleware = Middleware.compose(this._middleware, middleware)
+    this._middleware = Middleware.compose(this._middleware, Middleware.wrap(middleware))
     return this
   }
 
@@ -143,10 +160,10 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {Promise<void>}
    */
   async _open() {
-    await this._middleware.onopen({ router: this })
+    await this._middleware.onopen()
 
     for (const registration of this.methods.values()) {
-      await registration.onopen({ router: this, method: registration.method })
+      await registration.onopen()
     }
   }
 
@@ -155,11 +172,60 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {Promise<void>}
    */
   async _close() {
+    let caughtError = null
     for (const registration of this.methods.values()) {
-      await registration.onclose({ router: this, method: registration.method })
+      try {
+        await registration.onclose()
+      } catch (error) {
+        if (caughtError === null) {
+          caughtError = error
+        }
+      }
     }
     this.methods.clear()
-    await this._middleware.onclose({ router: this })
+    try {
+      await this._middleware.onclose()
+    } catch (error) {
+      if (caughtError === null) {
+        caughtError = error
+      }
+    }
+
+    if (caughtError) {
+      throw caughtError
+    }
+  }
+
+  /**
+   * Register metrics with prom-client.
+   * @param {typeof import('prom-client')} promClient
+   */
+  registerMetrics(promClient) {
+    const self = this
+
+    new promClient.Gauge({
+      name: 'protomux_rpc_router_nr_requests',
+      help: 'The number of requests processed by the router',
+      collect() {
+        this.set(self.stats.nrRequests)
+      }
+    })
+
+    new promClient.Gauge({
+      name: 'protomux_rpc_router_nr_errors',
+      help: 'The number of errors processed by the router',
+      collect() {
+        this.set(self.stats.nrErrors)
+      }
+    })
+
+    new promClient.Gauge({
+      name: 'protomux_rpc_router_nr_handler_errors',
+      help: 'The number of handler errors processed by the router',
+      collect() {
+        this.set(self.stats.nrHandlerErrors)
+      }
+    })
   }
 }
 
