@@ -21,7 +21,8 @@
   "scripts": {
     "lint": "prettier --check .",
     "format": "prettier --write .",
-    "test": "npm run lint && brittle test/*"
+    "test": "npm run lint && brittle test/*",
+    "test-example": "node example/index.js"
   },
   "devDependencies": {
     "b4a": "^1.7.3",
