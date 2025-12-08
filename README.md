@@ -9,7 +9,7 @@ This package wraps `protomux-rpc` responders with an onion-style middleware stac
 - Global middleware: applied to every RPC method.
 - Per-method middleware: applied only to a specific method.
 
-Middleware composes²   in a nested “onion” where control flows inward to your handler and then unwinds outward, so cross-cutting concerns (logging, rate limiting, timeouts, auth, validation, etc.) can be layered in a predictable order to improve resilience.
+Middleware composes in a nested “onion” where control flows inward to your handler and then unwinds outward, so cross-cutting concerns (logging, rate limiting, timeouts, auth, validation, etc.) can be layered in a predictable order to improve resilience.
 
 High level:
 
