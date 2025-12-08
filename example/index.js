@@ -42,6 +42,8 @@ async function main() {
     await rpcRouter.handleConnection(connection)
   })
 
+  throw new Error('ok')
+
   await server.listen()
   const { publicKey: serverPubKey } = server.address()
 
