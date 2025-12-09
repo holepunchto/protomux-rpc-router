@@ -38,7 +38,8 @@ class MethodRegistration {
   constructor(method, middleware, options, handler) {
     this.method = method
     this._middleware = middleware
-    this._options = options
+    this.requestEncoding = options.requestEncoding
+    this.responseEncoding = options.responseEncoding
     this._handler = handler
   }
 
@@ -119,19 +120,18 @@ class ProtomuxRpcRouter extends ReadyResource {
         try {
           return await combinedMiddleware.onrequest(ctx, async () => {
             try {
-              const { requestEncoding, responseEncoding } = registration._options
               let req
               try {
-                req = cenc.decode(requestEncoding, ctx.value)
+                req = cenc.decode(registration.requestEncoding, ctx.value)
               } catch (error) {
-                throw ProtomuxRpcError.DECODE_ERROR(`Could not decode request`, error)
+                throw ProtomuxRpcError.DECODE_ERROR('Could not decode request', error)
               }
               const res = await registration._handler(req, ctx)
 
               try {
-                return cenc.encode(responseEncoding, res)
+                return cenc.encode(registration.responseEncoding, res)
               } catch (error) {
-                throw ProtomuxRpcError.ENCODE_ERROR(`Could not encode response`, error)
+                throw ProtomuxRpcError.ENCODE_ERROR('Could not encode response', error)
               }
             } catch (error) {
               this.stats.nrHandlerErrors++

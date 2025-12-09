@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "compact-encoding": "^2.18.0",
-    "protomux-rpc": "^1.7.1",
+    "protomux-rpc": "^1.8.0",
     "ready-resource": "^1.2.0",
     "safety-catch": "^1.0.2"
   }
