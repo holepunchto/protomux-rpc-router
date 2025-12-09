@@ -1,6 +1,7 @@
 const test = require('brittle')
 const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
+const cenc = require('compact-encoding')
 const promClient = require('prom-client')
 const safetyCatch = require('safety-catch')
 const ProtomuxRpcRouter = require('..')
@@ -308,7 +309,39 @@ test('method-level middleware isolation', async (t) => {
   t.alike(executions, ['m2:before', 'echo-2', 'm2:after'])
 })
 
-test('stats counts total requests and errors with labels', async (t) => {
+test('method supports custom request/response encodings', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  router.method(
+    'greet',
+    { requestEncoding: cenc.string, responseEncoding: cenc.string },
+    (name) => `hi ${name}`
+  )
+
+  router.method('sum', { requestEncoding: cenc.json, responseEncoding: cenc.json }, ({ a, b }) => ({
+    sum: a + b
+  }))
+
+  const makeRequest = await simpleSetup(t, router)
+
+  const greetRes = await makeRequest('greet', 'world', {
+    requestEncoding: cenc.string,
+    responseEncoding: cenc.string
+  })
+  t.is(greetRes, 'hi world')
+
+  const sumRes = await makeRequest(
+    'sum',
+    { a: 2, b: 3 },
+    { requestEncoding: cenc.json, responseEncoding: cenc.json }
+  )
+  t.alike(sumRes, { sum: 5 })
+})
+
+test('stats counts total requests and errors', async (t) => {
   promClient.register.clear()
 
   const router = new ProtomuxRpcRouter()
@@ -355,4 +388,62 @@ test('stats counts total requests and errors with labels', async (t) => {
   t.is(totalErrors, 2, 'total errors counter')
   const totalHandlerErrors = getSumMetricValue(metrics, 'protomux_rpc_router_nr_handler_errors')
   t.is(totalHandlerErrors, 1, 'total handler errors counter')
+})
+
+test('client receives DECODE_ERROR when server cannot decode request', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  // Server expects a string, client will send raw Buffer to force a decode failure.
+  router.method(
+    'expect-string',
+    { requestEncoding: cenc.string, responseEncoding: cenc.raw },
+    (name) => b4a.from(name)
+  )
+
+  const makeRequest = await simpleSetup(t, router)
+
+  try {
+    await makeRequest('expect-string', b4a.from('hello'), {
+      requestEncoding: cenc.raw,
+      responseEncoding: cenc.raw
+    })
+    t.fail('request should have thrown')
+  } catch (err) {
+    t.is(err.name, 'RPCError')
+    t.is(err.code, 'REQUEST_ERROR')
+    t.ok(err.cause.name, 'ProtomuxRpcError')
+    t.ok(err.cause.code, 'DECODE_ERROR')
+  }
+})
+
+test('client receives REQUEST_ERROR when server cannot encode response', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  // Server will return a Buffer while responseEncoding expects a string, forcing encode failure.
+  router.method(
+    'string-response',
+    { requestEncoding: cenc.raw, responseEncoding: cenc.string },
+    () => b4a.from('not-a-string')
+  )
+
+  const makeRequest = await simpleSetup(t, router)
+
+  try {
+    await makeRequest('string-response', b4a.from('ok'), {
+      requestEncoding: cenc.raw,
+      responseEncoding: cenc.string
+    })
+    t.fail('request should have thrown')
+  } catch (err) {
+    t.is(err.name, 'RPCError')
+    t.is(err.code, 'REQUEST_ERROR')
+    t.ok(err.cause.name, 'ProtomuxRpcError')
+    t.ok(err.cause.code, 'ENCODE_ERROR')
+  }
 })

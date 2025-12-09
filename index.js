@@ -2,6 +2,8 @@ const ProtomuxRPC = require('protomux-rpc')
 const ReadyResource = require('ready-resource')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
+const cenc = require('compact-encoding')
+const ProtomuxRpcError = require('protomux-rpc/errors')
 
 /**
  * RPC context passed to middleware.
@@ -33,9 +35,11 @@ class MethodRegistration {
    * @param {Middleware} middleware
    * @param {(req: any) => any|Promise<any>} handler
    */
-  constructor(method, middleware, handler) {
+  constructor(method, middleware, options, handler) {
     this.method = method
     this._middleware = middleware
+    this.requestEncoding = options.requestEncoding
+    this.responseEncoding = options.responseEncoding
     this._handler = handler
   }
 
@@ -104,24 +108,36 @@ class ProtomuxRpcRouter extends ReadyResource {
       valueEncoding: null
     })
     this.methods.forEach((registration) => {
+      const combinedMiddleware = Middleware.compose(this._middleware, registration._middleware)
+
       rpc.respond(registration.method, async (value) => {
         this.stats.nrRequests++
-        const combinedMiddleware = Middleware.compose(this._middleware, registration._middleware)
         const ctx = {
           method: registration.method,
           value,
           connection
         }
         try {
-          const res = await combinedMiddleware.onrequest(ctx, async () => {
+          return await combinedMiddleware.onrequest(ctx, async () => {
             try {
-              return await registration._handler(ctx.value, ctx)
+              let req
+              try {
+                req = cenc.decode(registration.requestEncoding, ctx.value)
+              } catch (error) {
+                throw ProtomuxRpcError.DECODE_ERROR('Could not decode request', error)
+              }
+              const res = await registration._handler(req, ctx)
+
+              try {
+                return cenc.encode(registration.responseEncoding, res)
+              } catch (error) {
+                throw ProtomuxRpcError.ENCODE_ERROR('Could not encode response', error)
+              }
             } catch (error) {
               this.stats.nrHandlerErrors++
               throw error
             }
           })
-          return res
         } catch (error) {
           this.stats.nrErrors++
           throw error
@@ -145,11 +161,24 @@ class ProtomuxRpcRouter extends ReadyResource {
    * Usage:
    *   router.method('name', handler)
    * @param {string} method - RPC method name.
-   * @param {any} handler - Handler function.
+   * @param {Object} options - Method options.
+   * @param {any} options.requestEncoding - Middleware to apply to the method request encoding.
+   * @param {any} options.responseEncoding - Middleware to apply to the method response encoding.
+   * @param {(req: any, ctx: RpcContext) => any|Promise<any>} handler - Handler function.
    * @returns {MethodRegistration}
    */
-  method(method, handler) {
-    const registration = new MethodRegistration(method, Middleware.NOOP, handler)
+  method(method, options, handler) {
+    if (typeof options === 'function') {
+      handler = options
+      options = {}
+    }
+    if (!options.requestEncoding) {
+      options.requestEncoding = cenc.raw
+    }
+    if (!options.responseEncoding) {
+      options.responseEncoding = cenc.raw
+    }
+    const registration = new MethodRegistration(method, Middleware.NOOP, options, handler)
     this.methods.set(method, registration)
     return registration
   }
