@@ -50,9 +50,8 @@ Attach global middleware. This will wrap every method in the order provided (oni
 Register an RPC method. Returns a `MethodRegistration` which can be further configured with `.use(...)`.
 
 - `name`: string RPC method name.
-- `options`
-  - `options.requestEncoding`: a `compact-encoding` encoder used to decode `ctx.value` before invoking the handler.
-  - `options.responseEncoding`: a `compact-encoding` encoder used to encode the handler result.
+- `options.requestEncoding`: a `compact-encoding` encoder used to decode `ctx.value` before invoking the handler.
+- `options.responseEncoding`: a `compact-encoding` encoder used to encode the handler result.
 - `handler`: function `(request, ctx) => any|Promise<any>` that produces the response.
 
 Note: calls protomux-rpc's [respond](https://github.com/holepunchto/protomux-rpc?tab=readme-ov-file#rpcrespondmethod-options-handler) method under the hood.

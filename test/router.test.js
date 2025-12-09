@@ -341,7 +341,7 @@ test('method supports custom request/response encodings', async (t) => {
   t.alike(sumRes, { sum: 5 })
 })
 
-test('stats counts total requests and errors with labels', async (t) => {
+test('stats counts total requests and errors', async (t) => {
   promClient.register.clear()
 
   const router = new ProtomuxRpcRouter()
@@ -388,4 +388,62 @@ test('stats counts total requests and errors with labels', async (t) => {
   t.is(totalErrors, 2, 'total errors counter')
   const totalHandlerErrors = getSumMetricValue(metrics, 'protomux_rpc_router_nr_handler_errors')
   t.is(totalHandlerErrors, 1, 'total handler errors counter')
+})
+
+test('client receives DECODE_ERROR when server cannot decode request', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  // Server expects a string, client will send raw Buffer to force a decode failure.
+  router.method(
+    'expect-string',
+    { requestEncoding: cenc.string, responseEncoding: cenc.raw },
+    (name) => b4a.from(name)
+  )
+
+  const makeRequest = await simpleSetup(t, router)
+
+  try {
+    await makeRequest('expect-string', b4a.from('hello'), {
+      requestEncoding: cenc.raw,
+      responseEncoding: cenc.raw
+    })
+    t.fail('request should have thrown')
+  } catch (err) {
+    t.is(err.name, 'RPCError')
+    t.is(err.code, 'REQUEST_ERROR')
+    t.ok(err.cause.name, 'ProtomuxRpcError')
+    t.ok(err.cause.code, 'DECODE_ERROR')
+  }
+})
+
+test('client receives REQUEST_ERROR when server cannot encode response', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  // Server will return a Buffer while responseEncoding expects a string, forcing encode failure.
+  router.method(
+    'string-response',
+    { requestEncoding: cenc.raw, responseEncoding: cenc.string },
+    () => b4a.from('not-a-string')
+  )
+
+  const makeRequest = await simpleSetup(t, router)
+
+  try {
+    await makeRequest('string-response', b4a.from('ok'), {
+      requestEncoding: cenc.raw,
+      responseEncoding: cenc.string
+    })
+    t.fail('request should have thrown')
+  } catch (err) {
+    t.is(err.name, 'RPCError')
+    t.is(err.code, 'REQUEST_ERROR')
+    t.ok(err.cause.name, 'ProtomuxRpcError')
+    t.ok(err.cause.code, 'ENCODE_ERROR')
+  }
 })

@@ -3,6 +3,7 @@ const ReadyResource = require('ready-resource')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
 const cenc = require('compact-encoding')
+const ProtomuxRpcError = require('protomux-rpc/errors')
 
 /**
  * RPC context passed to middleware.
@@ -119,9 +120,19 @@ class ProtomuxRpcRouter extends ReadyResource {
           return await combinedMiddleware.onrequest(ctx, async () => {
             try {
               const { requestEncoding, responseEncoding } = registration._options
-              const value = cenc.decode(requestEncoding, ctx.value)
-              const res = await registration._handler(value, ctx)
-              return cenc.encode(responseEncoding, res)
+              let req
+              try {
+                req = cenc.decode(requestEncoding, ctx.value)
+              } catch (error) {
+                throw ProtomuxRpcError.DECODE_ERROR(`Could not decode request`, error)
+              }
+              const res = await registration._handler(req, ctx)
+
+              try {
+                return cenc.encode(responseEncoding, res)
+              } catch (error) {
+                throw ProtomuxRpcError.ENCODE_ERROR(`Could not encode response`, error)
+              }
             } catch (error) {
               this.stats.nrHandlerErrors++
               throw error
