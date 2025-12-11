@@ -12,7 +12,6 @@ test('middleware can enrich context; logger respects skip flags', async (t) => {
   const logs = []
 
   const logger = {
-    ...Middleware.NOOP,
     onrequest: async (ctx, next) => {
       let caughtError = null
       try {

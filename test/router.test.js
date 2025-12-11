@@ -447,3 +447,51 @@ test('client receives REQUEST_ERROR when server cannot encode response', async (
     t.ok(err.cause.code, 'ENCODE_ERROR')
   }
 })
+
+test('registerMetrics propagates to middleware chain', async (t) => {
+  promClient.register.clear()
+
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  const calls = []
+
+  const g1 = {
+    registerMetrics(pc) {
+      t.is(pc, promClient)
+      calls.push('g1')
+    }
+  }
+  const g2 = {
+    registerMetrics(pc) {
+      t.is(pc, promClient)
+      calls.push('g2')
+    }
+  }
+  const m1 = {
+    registerMetrics(pc) {
+      t.is(pc, promClient)
+      calls.push('m1')
+    }
+  }
+  const m2 = {
+    registerMetrics(pc) {
+      t.is(pc, promClient)
+      calls.push('m2')
+    }
+  }
+
+  router.use(g1)
+  router.use(g2)
+  router
+    .method('echo', (v) => v)
+    .use(m1)
+    .use(m2)
+
+  router.registerMetrics(promClient)
+
+  // Ensure both global and method-level middlewares received the registerMetrics call.
+  t.alike(calls, ['g1', 'g2', 'm1', 'm2'])
+})
