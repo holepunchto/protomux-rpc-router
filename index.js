@@ -33,14 +33,16 @@ class MethodRegistration {
   /**
    * @param {string} method
    * @param {Middleware} middleware
+   * @param {import('compact-encoding').Encoder} requestEncoding
+   * @param {import('compact-encoding').Encoder} responseEncoding
    * @param {(req: any) => any|Promise<any>} handler
    */
-  constructor(method, middleware, options, handler) {
+  constructor(method, middleware, requestEncoding, responseEncoding, handler) {
     this.method = method
-    this._middleware = middleware
-    this.requestEncoding = options.requestEncoding
-    this.responseEncoding = options.responseEncoding
-    this._handler = handler
+    this.middleware = middleware
+    this.requestEncoding = requestEncoding
+    this.responseEncoding = responseEncoding
+    this.handler = handler
   }
 
   /**
@@ -49,24 +51,8 @@ class MethodRegistration {
    * @returns {this}
    */
   use(middleware) {
-    this._middleware = Middleware.compose(this._middleware, Middleware.wrap(middleware))
+    this.middleware = Middleware.compose(this.middleware, Middleware.wrap(middleware))
     return this
-  }
-
-  /**
-   * Open hook for method, call into middleware chain
-   * @returns {Promise<void>}
-   */
-  async onopen() {
-    await this._middleware.onopen()
-  }
-
-  /**
-   * Close hook for method, call into middleware chain
-   * @returns {Promise<void>}
-   */
-  async onclose() {
-    await this._middleware.onclose()
   }
 }
 
@@ -81,8 +67,10 @@ class ProtomuxRpcRouter extends ReadyResource {
    */
   constructor() {
     super()
+    /** @type {Map<string, MethodRegistration>} */
     this.methods = new Map()
-    this._middleware = Middleware.NOOP
+    /** @type {Middleware} */
+    this.middleware = Middleware.NOOP
     this.stats = {
       nrRequests: 0,
       nrErrors: 0,
@@ -108,7 +96,7 @@ class ProtomuxRpcRouter extends ReadyResource {
       valueEncoding: null
     })
     this.methods.forEach((registration) => {
-      const combinedMiddleware = Middleware.compose(this._middleware, registration._middleware)
+      const combinedMiddleware = Middleware.compose(this.middleware, registration.middleware)
 
       rpc.respond(registration.method, async (value) => {
         this.stats.nrRequests++
@@ -126,7 +114,7 @@ class ProtomuxRpcRouter extends ReadyResource {
               } catch (error) {
                 throw ProtomuxRpcError.DECODE_ERROR('Could not decode request', error)
               }
-              const res = await registration._handler(req, ctx)
+              const res = await registration.handler(req, ctx)
 
               try {
                 return cenc.encode(registration.responseEncoding, res)
@@ -152,7 +140,7 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {this}
    */
   use(middleware) {
-    this._middleware = Middleware.compose(this._middleware, Middleware.wrap(middleware))
+    this.middleware = Middleware.compose(this.middleware, Middleware.wrap(middleware))
     return this
   }
 
@@ -172,13 +160,15 @@ class ProtomuxRpcRouter extends ReadyResource {
       handler = options
       options = {}
     }
-    if (!options.requestEncoding) {
-      options.requestEncoding = cenc.raw
-    }
-    if (!options.responseEncoding) {
-      options.responseEncoding = cenc.raw
-    }
-    const registration = new MethodRegistration(method, Middleware.NOOP, options, handler)
+    const { requestEncoding = cenc.raw, responseEncoding = cenc.raw } = options
+
+    const registration = new MethodRegistration(
+      method,
+      Middleware.NOOP,
+      requestEncoding,
+      responseEncoding,
+      handler
+    )
     this.methods.set(method, registration)
     return registration
   }
@@ -188,10 +178,10 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @returns {Promise<void>}
    */
   async _open() {
-    await this._middleware.onopen()
+    await this.middleware.onopen()
 
     for (const registration of this.methods.values()) {
-      await registration.onopen()
+      await registration.middleware.onopen()
     }
   }
 
@@ -203,14 +193,14 @@ class ProtomuxRpcRouter extends ReadyResource {
     let aggregateError = null
     for (const registration of this.methods.values()) {
       try {
-        await registration.onclose()
+        await registration.middleware.onclose()
       } catch (error) {
         aggregateError = ProtomuxRpcRouterError.aggregate(aggregateError, error)
       }
     }
     this.methods.clear()
     try {
-      await this._middleware.onclose()
+      await this.middleware.onclose()
     } catch (error) {
       aggregateError = ProtomuxRpcRouterError.aggregate(aggregateError, error)
     }
@@ -249,6 +239,12 @@ class ProtomuxRpcRouter extends ReadyResource {
         this.set(self.stats.nrHandlerErrors)
       }
     })
+
+    this.middleware.registerMetrics(promClient)
+
+    for (const registration of this.methods.values()) {
+      registration.middleware.registerMetrics(promClient)
+    }
   }
 }
 
