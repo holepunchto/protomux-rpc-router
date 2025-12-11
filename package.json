@@ -1,6 +1,6 @@
 {
   "name": "protomux-rpc-router",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Protomux RPC router with modular, stackable middleware",
   "homepage": "https://github.com/holepunchto/protomux-rpc-router#readme",
   "bugs": {
