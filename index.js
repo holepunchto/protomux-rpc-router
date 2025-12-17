@@ -1,5 +1,6 @@
 const ProtomuxRPC = require('protomux-rpc')
 const ReadyResource = require('ready-resource')
+const crypto = require('crypto')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
 const cenc = require('compact-encoding')
@@ -99,8 +100,10 @@ class ProtomuxRpcRouter extends ReadyResource {
       const combinedMiddleware = Middleware.compose(this.middleware, registration.middleware)
 
       rpc.respond(registration.method, async (value) => {
+        const requestId = crypto.randomUUID()
         this.stats.nrRequests++
         const ctx = {
+          requestId,
           method: registration.method,
           value,
           connection
@@ -128,6 +131,7 @@ class ProtomuxRpcRouter extends ReadyResource {
           })
         } catch (error) {
           this.stats.nrErrors++
+          error.context = requestId
           throw error
         }
       })
