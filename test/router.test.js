@@ -495,3 +495,31 @@ test('registerMetrics propagates to middleware chain', async (t) => {
   // Ensure both global and method-level middlewares received the registerMetrics call.
   t.alike(calls, ['g1', 'g2', 'm1', 'm2'])
 })
+
+test('requestId is included in the context', async (t) => {
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  router.method('echo', (v) => {
+    const boom = new Error('boom')
+    boom.code = 'BOOM'
+    throw boom
+  })
+
+  const makeRequest = await simpleSetup(t, router)
+
+  try {
+    await makeRequest('echo', b4a.from('hello'))
+    t.fail('request should have thrown')
+  } catch (err) {
+    t.is(err.code, 'REQUEST_ERROR')
+    t.ok(err.cause.code, 'BOOM')
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    t.ok(
+      uuidRegex.test(err.cause.context),
+      'requestId is included in the context and is a valid UUID'
+    )
+  }
+})
