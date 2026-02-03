@@ -2,8 +2,9 @@ const test = require('brittle')
 const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
 const cenc = require('compact-encoding')
-const promClient = require('prom-client')
 const safetyCatch = require('safety-catch')
+const promClient = require('prom-client')
+const { isBare } = require('which-runtime')
 const ProtomuxRpcRouter = require('..')
 
 test('composable middlewares run in order (global -> method)', async (t) => {
@@ -419,7 +420,11 @@ test('client receives DECODE_ERROR when server cannot decode request', async (t)
   }
 })
 
-test('client receives REQUEST_ERROR when server cannot encode response', async (t) => {
+test('client receives ENCODE_ERROR when server cannot encode response', async (t) => {
+  if (isBare) {
+    t.pass('cenc.string does not throw but crash in bare runtime')
+    return
+  }
   const router = new ProtomuxRpcRouter()
   t.teardown(async () => {
     await router.close()
@@ -449,6 +454,10 @@ test('client receives REQUEST_ERROR when server cannot encode response', async (
 })
 
 test('registerMetrics propagates to middleware chain', async (t) => {
+  if (isBare) {
+    t.pass('registerMetrics are not supported in bare runtime')
+    return
+  }
   promClient.register.clear()
 
   const router = new ProtomuxRpcRouter()
