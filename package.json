@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "b4a": "^1.7.3",
+    "bare-prom-client": "^15.1.6",
     "brittle": "^3.19.1",
     "hyperdht": "^6.27.0",
     "prettier": "^3.6.2",
@@ -46,6 +47,10 @@
     "crypto": {
       "bare": "bare-crypto",
       "default": "crypto"
+    },
+    "prom-client": {
+      "bare": "bare-prom-client",
+      "default": "prom-client"
     }
   }
 }

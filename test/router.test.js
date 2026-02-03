@@ -3,8 +3,8 @@ const { simpleSetup } = require('./helper')
 const b4a = require('b4a')
 const cenc = require('compact-encoding')
 const safetyCatch = require('safety-catch')
+const promClient = require('prom-client')
 const { isBare } = require('which-runtime')
-const promClient = isBare ? null : require('prom-client')
 const ProtomuxRpcRouter = require('..')
 
 test('composable middlewares run in order (global -> method)', async (t) => {
@@ -343,10 +343,6 @@ test('method supports custom request/response encodings', async (t) => {
 })
 
 test('stats counts total requests and errors', async (t) => {
-  if (isBare) {
-    t.pass('stats are not supported in bare runtime')
-    return
-  }
   promClient.register.clear()
 
   const router = new ProtomuxRpcRouter()
