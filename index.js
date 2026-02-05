@@ -1,8 +1,10 @@
 const ProtomuxRPC = require('protomux-rpc')
 const ReadyResource = require('ready-resource')
 const crypto = require('crypto')
+const HyperswarmCapability = require('hyperswarm-capability')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
+const Handshake = require('./lib/handshake')
 const cenc = require('compact-encoding')
 const ProtomuxRpcError = require('protomux-rpc/errors')
 
@@ -65,9 +67,16 @@ class ProtomuxRpcRouter extends ReadyResource {
 
   /**
    * Create a new router.
+   * @param {Object} [options]
+   * @param {Buffer} [options.namespace] - Optional namespace for capability.
+   * @param {Buffer} [options.capability] - Optional capability key. Enables capability verification.
    */
-  constructor() {
+  constructor({ namespace = null, capability = null } = {}) {
     super()
+
+    this._cap = capability ? new HyperswarmCapability(namespace) : null
+    this._capability = capability
+
     /** @type {Map<string, MethodRegistration>} */
     this.methods = new Map()
     /** @type {Middleware} */
@@ -94,8 +103,25 @@ class ProtomuxRpcRouter extends ReadyResource {
     }
     const rpc = new ProtomuxRPC(connection, {
       id: protomuxRpcId,
-      valueEncoding: null
+      valueEncoding: null,
+      handshakeEncoding: this._capability ? Handshake : null,
+      handshake: this._capability
+        ? { capability: this._cap.generate(connection, this._capability) }
+        : null
     })
+
+    if (this._capability) {
+      rpc.on('open', (handshake) => {
+        if (
+          !handshake?.capability ||
+          !this._cap.verify(connection, this._capability, handshake.capability)
+        ) {
+          this.emit('capability-error', { connection })
+          rpc.destroy(new Error('Remote sent invalid capability'))
+        }
+      })
+    }
+
     this.methods.forEach((registration) => {
       const combinedMiddleware = Middleware.compose(this.middleware, registration.middleware)
 

@@ -1,6 +1,8 @@
 const getTestnet = require('hyperdht/testnet')
 const HyperDHT = require('hyperdht')
-const ProtomuxRpcClient = require('protomux-rpc-client')
+const ProtomuxRPC = require('protomux-rpc')
+const HyperswarmCapability = require('hyperswarm-capability')
+const Handshake = require('../lib/handshake')
 const cenc = require('compact-encoding')
 const b4a = require('b4a')
 const sodium = require('sodium-universal')
@@ -29,25 +31,51 @@ exports.setUpServer = async (t, bootstrap, router) => {
   return server
 }
 
+exports.createClient = async (t, bootstrap, serverPublicKey, options = {}) => {
+  const { namespace, capability, keyPair } = options
+
+  const clientDht = new HyperDHT({ bootstrap, keyPair })
+  t.teardown(() => clientDht.destroy())
+
+  const stream = clientDht.connect(serverPublicKey)
+  stream.on('error', () => {})
+
+  await stream.opened
+
+  const rpcOptions = {
+    id: serverPublicKey,
+    valueEncoding: null
+  }
+
+  if (capability) {
+    const cap = new HyperswarmCapability(namespace)
+    rpcOptions.handshakeEncoding = Handshake
+    rpcOptions.handshake = { capability: cap.generate(stream, capability) }
+  }
+
+  const rpc = new ProtomuxRPC(stream, rpcOptions)
+
+  t.teardown(() => {
+    rpc.destroy()
+    stream.destroy()
+  })
+
+  return rpc
+}
+
 exports.simpleSetup = async (t, router) => {
   const { bootstrap } = await exports.setUpNetwork(t)
   const server = await exports.setUpServer(t, bootstrap, router)
   await router.ready()
 
-  const clientDht = new HyperDHT({ bootstrap })
-  t.teardown(async () => {
-    await clientDht.destroy()
-  })
-  const client = new ProtomuxRpcClient(clientDht)
-  t.teardown(async () => {
-    await client.close()
-  })
+  const rpc = await exports.createClient(t, bootstrap, server.address().publicKey)
+
   return (
     method,
     params,
     requestOpts = { requestEncoding: cenc.raw, responseEncoding: cenc.raw }
   ) => {
-    return client.makeRequest(server.address().publicKey, method, params, requestOpts)
+    return rpc.request(method, params, requestOpts)
   }
 }
 

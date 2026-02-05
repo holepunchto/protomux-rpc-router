@@ -35,9 +35,14 @@ See [example/index.js](example/index.js) for a runnable demo.
 
 ## API
 
-#### `const router = new ProtomuxRpcRouter()`
+#### `const router = new ProtomuxRpcRouter([options])`
 
 Create a new router.
+
+`options` include:
+
+- `namespace`: optional namespace for capability.
+- `capability`: optional capability key. Enables capability verification.
 
 #### `router.use(middleware)`
 
@@ -105,3 +110,9 @@ const middleware = {
   - `next()`: calls the next middleware/handler and resolves to the handler’s response (or throws).
 - `onopen()`: async open hook to initialize the resource.
 - `onclose()`: async close hook to cleanup the resource.
+
+### Events
+
+#### `router.on('capability-error', ({ connection }) => {})`
+
+Emitted when a client fails capability verification. The connection is destroyed after this event.
