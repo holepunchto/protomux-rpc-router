@@ -1,9 +1,8 @@
 const ProtomuxRpcRouter = require('..')
 const HyperDHT = require('hyperdht')
 const getTestnet = require('hyperdht/testnet')
+const ProtomuxRPC = require('protomux-rpc')
 const cenc = require('compact-encoding')
-const safetyCatch = require('safety-catch')
-const ProtomuxRpcClient = require('protomux-rpc-client')
 const logger = require('./logger')
 
 /**
@@ -28,8 +27,22 @@ function setUpRpcRouter() {
   return rpcRouter
 }
 
+async function createClient(dht, serverPublicKey) {
+  const stream = dht.connect(serverPublicKey)
+  stream.on('error', () => {})
+
+  await stream.opened
+
+  const rpc = new ProtomuxRPC(stream, {
+    id: serverPublicKey,
+    valueEncoding: null
+  })
+
+  return { rpc, stream }
+}
+
 async function main() {
-  console.log('Running protomux-RPC client example')
+  console.log('Running protomux-RPC router example')
   const testnet = await getTestnet()
   const { bootstrap } = testnet
 
@@ -53,48 +66,31 @@ async function main() {
   await testnet.destroy()
 }
 
-class EchoClient {
-  constructor(key, rpcClient) {
-    this.key = key
-    this.rpcClient = rpcClient
-  }
-
-  async echo(text) {
-    return await this.rpcClient.makeRequest(
-      this.key,
-      'echo', // The RPC method name
-      text, // The RPC method parameters
-      { requestEncoding: cenc.string, responseEncoding: cenc.string }
-    )
-  }
-
-  async error(message) {
-    return await this.rpcClient.makeRequest(
-      this.key,
-      'error', // The RPC method name
-      message, // The RPC method parameters
-      { requestEncoding: cenc.string, responseEncoding: cenc.string }
-    )
-  }
-}
-
 async function clientMain(bootstrap, serverPubKey) {
   const dht = new HyperDHT({ bootstrap })
-  const client = new ProtomuxRpcClient(dht)
+  const { rpc, stream } = await createClient(dht, serverPubKey)
 
   try {
-    const echoClient = new EchoClient(serverPubKey, client)
-    const res = await echoClient.echo('ok')
+    const res = await rpc.request('echo', 'ok', {
+      requestEncoding: cenc.string,
+      responseEncoding: cenc.string
+    })
     console.log('Server replied with', res)
 
-    await echoClient.error('test error').catch((error) => {
-      console.log('Error in clientMain', error)
-    })
+    await rpc
+      .request('error', 'test error', {
+        requestEncoding: cenc.string,
+        responseEncoding: cenc.string
+      })
+      .catch((error) => {
+        console.log('Error in clientMain', error)
+      })
   } catch (error) {
     console.error('Error in clientMain', error)
   } finally {
-    await client.close().catch(safetyCatch)
-    await dht.destroy().catch(safetyCatch)
+    rpc.destroy()
+    stream.destroy()
+    await dht.destroy()
   }
 }
 
