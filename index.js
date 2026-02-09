@@ -116,8 +116,8 @@ class ProtomuxRpcRouter extends ReadyResource {
           !handshake?.capability ||
           !this._cap.verify(connection, this._capability, handshake.capability)
         ) {
-          this.emit('capability-error', { connection })
           rpc.destroy(new Error('Remote sent invalid capability'))
+          this.emit('capability-error', { connection })
         }
       })
     }

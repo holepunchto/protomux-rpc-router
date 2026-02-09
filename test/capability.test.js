@@ -50,9 +50,6 @@ test('invalid capability - client is rejected and capability-error emitted', asy
     namespace: b4a.from('test-namespace'),
     capability: b4a.from('wrong-capability')
   })
-
-  // Wait a bit for the capability check to happen
-  await new Promise((resolve) => setTimeout(resolve, 100))
 })
 
 test('no capability configured - router accepts any connection (backward compat)', async (t) => {
@@ -96,8 +93,6 @@ test('invalid namespace - client is rejected', async (t) => {
     namespace: b4a.from('wrong-namespace'),
     capability: b4a.from('test-capability')
   })
-
-  await new Promise((resolve) => setTimeout(resolve, 100))
 })
 
 test('request after invalid capability is rejected', async (t) => {
@@ -119,10 +114,7 @@ test('request after invalid capability is rejected', async (t) => {
     capability: b4a.from('wrong-capability')
   })
 
-  try {
+  await t.exception(async () => {
     await rpc.request('echo', b4a.from('hello'))
-    t.fail('request should have failed')
-  } catch (err) {
-    t.ok(err, 'request failed as expected')
-  }
+  }, 'Remote sent invalid capability')
 })
