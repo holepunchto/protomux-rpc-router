@@ -4,9 +4,10 @@ const crypto = require('crypto')
 const HyperswarmCapability = require('hyperswarm-capability')
 const Middleware = require('./lib/middleware')
 const ProtomuxRpcRouterError = require('./lib/errors')
-const Handshake = require('./lib/handshake')
 const cenc = require('compact-encoding')
 const ProtomuxRpcError = require('protomux-rpc/errors')
+
+const Handshake = HyperswarmCapability.Encoding
 
 /**
  * RPC context passed to middleware.

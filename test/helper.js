@@ -2,10 +2,11 @@ const getTestnet = require('hyperdht/testnet')
 const HyperDHT = require('hyperdht')
 const ProtomuxRPC = require('protomux-rpc')
 const HyperswarmCapability = require('hyperswarm-capability')
-const Handshake = require('../lib/handshake')
 const cenc = require('compact-encoding')
 const b4a = require('b4a')
 const sodium = require('sodium-universal')
+
+const Handshake = HyperswarmCapability.Encoding
 
 exports.setUpNetwork = async (t) => {
   const testnet = await getTestnet()
