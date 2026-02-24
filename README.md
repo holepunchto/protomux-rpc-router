@@ -41,8 +41,8 @@ Create a new router.
 
 `options` include:
 
-- `namespace`: optional namespace for capability.
 - `capability`: optional capability key. Enables capability verification.
+- `namespace`: optional namespace for the capability. Defaults to the default namespace of [hyperswarm-capability](https://github.com/holepunchto/hyperswarm-capability).
 
 #### `router.use(middleware)`
 

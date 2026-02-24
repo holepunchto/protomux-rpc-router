@@ -72,7 +72,7 @@ class ProtomuxRpcRouter extends ReadyResource {
    * @param {Buffer} [options.namespace] - Optional namespace for capability.
    * @param {Buffer} [options.capability] - Optional capability key. Enables capability verification.
    */
-  constructor({ namespace = null, capability = null } = {}) {
+  constructor({ namespace = undefined, capability = null } = {}) {
     super()
 
     this._cap = capability ? new HyperswarmCapability(namespace) : null
