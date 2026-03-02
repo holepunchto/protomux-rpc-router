@@ -1,9 +1,6 @@
 const test = require('brittle')
-const { createKeyPair, setUpNetwork, setUpServer, simpleSetup } = require('./helper')
+const { createKeyPair, setUpNetwork, setUpServer, simpleSetup, createClient } = require('./helper')
 const ProtomuxRpcRouter = require('..')
-const HyperDHT = require('hyperdht')
-const ProtomuxRpcClient = require('protomux-rpc-client')
-const cenc = require('compact-encoding')
 const b4a = require('b4a')
 const Middleware = require('../lib/middleware')
 
@@ -109,72 +106,32 @@ test('middleware can enrich context; simple acl', async (t) => {
   const server = await setUpServer(t, bootstrap, router)
   await router.ready()
 
-  const clientDht = new HyperDHT({ bootstrap })
-  t.teardown(async () => {
-    await clientDht.destroy()
+  const userRpc = await createClient(t, bootstrap, server.address().publicKey, {
+    keyPair: userKeyPair
   })
-  const userClient = new ProtomuxRpcClient(clientDht, { keyPair: userKeyPair })
-  t.teardown(async () => {
-    await userClient.close()
+  const adminRpc = await createClient(t, bootstrap, server.address().publicKey, {
+    keyPair: adminKeyPair
   })
-  const adminClient = new ProtomuxRpcClient(clientDht, { keyPair: adminKeyPair })
-  t.teardown(async () => {
-    await adminClient.close()
-  })
-  const userRole = await userClient.makeRequest(
-    server.address().publicKey,
-    'inspect-role',
-    b4a.from('afas'),
-    {
-      requestEncoding: cenc.raw,
-      responseEncoding: cenc.raw
-    }
-  )
+
+  const userRole = await userRpc.request('inspect-role', b4a.from('afas'))
   t.alike(userRole, b4a.from('user'), 'user can inspect role and get "user"')
-  const adminRole = await adminClient.makeRequest(
-    server.address().publicKey,
-    'inspect-role',
-    b4a.from(''),
-    {
-      requestEncoding: cenc.raw,
-      responseEncoding: cenc.raw
-    }
-  )
+
+  const adminRole = await adminRpc.request('inspect-role', b4a.from(''))
   t.alike(adminRole, b4a.from('admin'), 'admin can inspect role and get "admin"')
+
   await t.exception(
-    () =>
-      userClient.makeRequest(server.address().publicKey, 'echo-admin', b4a.from('hello'), {
-        requestEncoding: cenc.raw,
-        responseEncoding: cenc.raw
-      }),
+    () => userRpc.request('echo-admin', b4a.from('hello')),
     'user cannot echo using echo-admin'
   )
-  const userEcho = await userClient.makeRequest(
-    server.address().publicKey,
-    'echo-user',
-    b4a.from('hello'),
-    {
-      requestEncoding: cenc.raw,
-      responseEncoding: cenc.raw
-    }
-  )
+
+  const userEcho = await userRpc.request('echo-user', b4a.from('hello'))
   t.alike(userEcho, b4a.from('hello'), 'user can echo using echo-user')
-  const adminEcho = await adminClient.makeRequest(
-    server.address().publicKey,
-    'echo-admin',
-    b4a.from('hello'),
-    {
-      requestEncoding: cenc.raw,
-      responseEncoding: cenc.raw
-    }
-  )
+
+  const adminEcho = await adminRpc.request('echo-admin', b4a.from('hello'))
   t.alike(adminEcho, b4a.from('hello'), 'admin can echo using echo-admin')
+
   await t.exception(
-    () =>
-      adminClient.makeRequest(server.address().publicKey, 'echo-user', b4a.from('hello'), {
-        requestEncoding: cenc.raw,
-        responseEncoding: cenc.raw
-      }),
+    () => adminRpc.request('echo-user', b4a.from('hello')),
     'admin cannot echo using echo-user'
   )
 })
