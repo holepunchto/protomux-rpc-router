@@ -10,9 +10,12 @@ const Handshake = HyperswarmCapability.Encoding
 
 exports.setUpNetwork = async (t) => {
   const testnet = await getTestnet()
-  t.teardown(async () => {
-    await testnet.destroy()
-  })
+  t.teardown(
+    async () => {
+      await testnet.destroy()
+    },
+    { order: 5000 }
+  )
   return { bootstrap: testnet.bootstrap }
 }
 
