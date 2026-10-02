@@ -244,11 +244,11 @@ class ProtomuxRpcRouter extends ReadyResource {
    * Register metrics with prom-client.
    * @param {typeof import('prom-client')} promClient
    */
-  registerMetrics(promClient) {
+  registerMetrics(promClient, { prefix = '' } = {}) {
     const self = this
 
     new promClient.Gauge({
-      name: 'protomux_rpc_router_nr_requests',
+      name: `${prefix}protomux_rpc_router_nr_requests`,
       help: 'The number of requests processed by the router',
       collect() {
         this.set(self.stats.nrRequests)
@@ -256,7 +256,7 @@ class ProtomuxRpcRouter extends ReadyResource {
     })
 
     new promClient.Gauge({
-      name: 'protomux_rpc_router_nr_errors',
+      name: `${prefix}protomux_rpc_router_nr_errors`,
       help: 'The number of errors processed by the router',
       collect() {
         this.set(self.stats.nrErrors)
@@ -264,7 +264,7 @@ class ProtomuxRpcRouter extends ReadyResource {
     })
 
     new promClient.Gauge({
-      name: 'protomux_rpc_router_nr_handler_errors',
+      name: `${prefix}protomux_rpc_router_nr_handler_errors`,
       help: 'The number of handler errors processed by the router',
       collect() {
         this.set(self.stats.nrHandlerErrors)

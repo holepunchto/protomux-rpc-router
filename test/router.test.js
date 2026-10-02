@@ -391,6 +391,22 @@ test('stats counts total requests and errors', async (t) => {
   t.is(totalHandlerErrors, 1, 'total handler errors counter')
 })
 
+test('can set prefix for metrics', async (t) => {
+  promClient.register.clear()
+
+  const router = new ProtomuxRpcRouter()
+  t.teardown(async () => {
+    await router.close()
+  })
+
+  router.registerMetrics(promClient, { prefix: 'my_prefix_' })
+
+  const metrics = await promClient.register.metrics()
+  t.ok(metrics.includes('my_prefix_protomux_rpc_router_nr_requests'))
+  t.ok(metrics.includes('my_prefix_protomux_rpc_router_nr_errors'))
+  t.ok(metrics.includes('my_prefix_protomux_rpc_router_nr_handler_errors'))
+})
+
 test('client receives DECODE_ERROR when server cannot decode request', async (t) => {
   const router = new ProtomuxRpcRouter()
   t.teardown(async () => {
